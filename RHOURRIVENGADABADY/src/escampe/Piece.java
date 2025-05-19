@@ -1,3 +1,5 @@
+package escampe;
+
 public class Piece {
     public String type;   // "licorne" ou "paladin"
     public String color;  // "noir" ou "blanc"

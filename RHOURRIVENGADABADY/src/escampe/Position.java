@@ -1,3 +1,6 @@
+
+package escampe;
+
 public class Position {
     public int row; // 0 à 5
     public int col; // 0 à 5
@@ -15,6 +18,10 @@ public class Position {
 
     public String toString() {
         return "" + (char)(col + 'A') + (row + 1);
+    }
+
+    public static String toString(int row, int col) {
+        return new Position(row, col).toString();
     }
 
     public boolean equals(Object o) {

@@ -1,3 +1,5 @@
+package escampe;
+
 public interface Partie1 {
  /** initialise un plateau `a partir d’un fichier texte
  * @param fileName le nom du fichier `a lire
