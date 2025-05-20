@@ -20,7 +20,7 @@ public class EscampeBoard implements Partie1 {
     };
 
     private Piece[][] board = new Piece[SIZE][SIZE];
-    private String currentPlayer = "blanc";
+    private String currentPlayer = "noir";
     private Position lastOpponentDest = null;  // null until first normal move
 
     @Override
