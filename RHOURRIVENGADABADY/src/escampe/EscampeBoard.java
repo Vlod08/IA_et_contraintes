@@ -245,4 +245,7 @@ public class EscampeBoard implements Partie1 {
     private String opponentOf(String p) {
         return p.equals("blanc") ? "noir" : "blanc";
     }
+    public Piece[][] getBoard() {
+        return board;
+    }
 }
