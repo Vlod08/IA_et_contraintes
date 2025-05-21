@@ -4,14 +4,17 @@ import java.io.File;
 import java.util.Random;
 
 /**
- * IA Escampe avec fonction minimax séparée.
+ * IA Escampe avec Minimax récursif et élagage alpha-beta,
+ * sans modifier les autres fichiers. Utilise un test terminal
+ * interne plutôt que board.isGameOver().
  */
 public class JoueurIA implements IJoueur {
     private int myColour;              // IJoueur.BLANC or IJoueur.NOIR
     private EscampeBoard board;
     private boolean ouvertureNoir;
     private boolean ouvertureBlanc;
-    private Random rand = new Random();
+    private final Random rand = new Random();
+    private static final int MAX_DEPTH = 4;  // Profondeur ajustable
 
     @Override
     public void initJoueur(int mycolour) {
@@ -34,75 +37,56 @@ public class JoueurIA implements IJoueur {
         if (myColour == IJoueur.NOIR && ouvertureNoir) {
             ouvertureNoir = false;
             String move = "C6/A6/B5/D5/E6/F5";
-            System.out.println("Ouverture Noir : " + move);
             board.play(move, me);
             return move;
         }
         if (myColour == IJoueur.BLANC && ouvertureBlanc) {
             ouvertureBlanc = false;
             String move = "C1/A3/C2/C5/F1/F4";
-            System.out.println("Ouverture Blanc : " + move);
             board.play(move, me);
             return move;
         }
 
-        // --- Recherche minimax ---
-        String best = minimax();
-        System.out.println("IA choisit (minimax) : " + best);
-        board.play(best, me);
-        return best;
+        // --- Recherche Minimax récursif avec alpha-beta ---
+        String bestMove = minimax(MAX_DEPTH);
+        board.play(bestMove, me);
+        return bestMove;
     }
 
     /**
-     * Deux-ply minimax : pour chaque coup possible, simule
-     * la réponse adverse, évalue avec evaluateBoard, et choisit
-     * le coup maximisant le pire scénario.
+     * Pilote Minimax : teste chaque coup racine et renvoie le meilleur.
      */
-    private String minimax() {
+    private String minimax(int depth) {
         String me  = (myColour == IJoueur.NOIR) ? "noir" : "blanc";
         String opp = (myColour == IJoueur.NOIR) ? "blanc" : "noir";
 
         String[] myMoves = board.possiblesMoves(me);
-        // si unique passe
         if (myMoves.length == 1 && "E".equals(myMoves[0])) {
             return "E";
         }
 
         double bestScore = Double.NEGATIVE_INFINITY;
-        String bestMove  = myMoves[rand.nextInt(myMoves.length)];
+        String bestMove = myMoves[rand.nextInt(myMoves.length)];
 
         try {
-            // snapshot de l'état
-            File tmp = File.createTempFile("escampe_", ".tmp");
-            board.saveToFile(tmp.getAbsolutePath());
+            File snapshot = File.createTempFile("escampe_init_", ".tmp");
+            board.saveToFile(snapshot.getAbsolutePath());
 
-            for (String m : myMoves) {
-                board.play(m, me);
-                String[] replies = board.possiblesMoves(opp);
+            for (String move : myMoves) {
+                board.play(move, me);
+                double score = minimaxValue(depth - 1, false,
+                                            Double.NEGATIVE_INFINITY,
+                                            Double.POSITIVE_INFINITY,
+                                            me, opp);
+                board.setFromFile(snapshot.getAbsolutePath());
 
-                double worst = Double.POSITIVE_INFINITY;
-                if (replies.length == 1 && "E".equals(replies[0])) {
-                    // adversaire seul passe
-                    worst = evaluateBoard(me, opp);
-                } else {
-                    for (String r : replies) {
-                        board.play(r, opp);
-                        double sc = evaluateBoard(me, opp);
-                        board.setFromFile(tmp.getAbsolutePath());
-                        worst = Math.min(worst, sc);
-                    }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove  = move;
                 }
-
-                if (worst > bestScore) {
-                    bestScore = worst;
-                    bestMove  = m;
-                }
-                // restaurer pour le coup suivant
-                board.setFromFile(tmp.getAbsolutePath());
             }
-            tmp.delete();
+            snapshot.delete();
         } catch (Exception e) {
-            // en cas d'erreur IO, retomber sur random
             bestMove = myMoves[rand.nextInt(myMoves.length)];
         }
 
@@ -110,43 +94,105 @@ public class JoueurIA implements IJoueur {
     }
 
     /**
-     * Heuristique simple : mobilité + léger bonus mat�riel.
+     * Minimax récursif avec élagage alpha-beta.
+     */
+    private double minimaxValue(int depth,
+                                boolean isMaximizing,
+                                double alpha,
+                                double beta,
+                                String player,
+                                String opponent) throws Exception {
+        // Test terminal interne
+        if (depth == 0 || isTerminal(player, opponent)) {
+            return evaluateBoard(player, opponent);
+        }
+
+        String[] moves = board.possiblesMoves(isMaximizing ? player : opponent);
+        if (moves.length == 0) {
+            return evaluateBoard(player, opponent);
+        }
+
+        File snapshot = File.createTempFile("escampe_", ".tmp");
+        board.saveToFile(snapshot.getAbsolutePath());
+
+        double best = isMaximizing ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+        for (String move : moves) {
+            board.play(move, isMaximizing ? player : opponent);
+            double val = minimaxValue(depth - 1,
+                                      !isMaximizing,
+                                      alpha, beta,
+                                      player, opponent);
+            board.setFromFile(snapshot.getAbsolutePath());
+
+            if (isMaximizing) {
+                best = Math.max(best, val);
+                alpha = Math.max(alpha, val);
+            } else {
+                best = Math.min(best, val);
+                beta  = Math.min(beta, val);
+            }
+            if (beta <= alpha) break;
+        }
+        snapshot.delete();
+        return best;
+    }
+
+    /**
+     * Test terminal: double passe ou plus de pièces pour un joueur.
+     */
+    private boolean isTerminal(String player, String opponent) {
+        String[] pMoves = board.possiblesMoves(player);
+        String[] oMoves = board.possiblesMoves(opponent);
+        // double passe
+        if (pMoves.length == 1 && "E".equals(pMoves[0])
+         && oMoves.length == 1 && "E".equals(oMoves[0])) {
+            return true;
+        }
+        // plus de pièces
+        int countP = 0, countO = 0;
+        for (Piece[] row : board.getBoard()) {
+            for (Piece pc : row) {
+                if (pc != null) {
+                    if (pc.color.equals(player)) countP++;
+                    else                           countO++;
+                }
+            }
+        }
+        return (countP == 0 || countO == 0);
+    }
+
+    /**
+     * Heuristique : mobilité + petit bonus matériel.
      */
     private double evaluateBoard(String me, String opp) {
-        double mobilityScore = board.possiblesMoves(me).length
-                             - board.possiblesMoves(opp).length;
-        // compter les pièces restantes
+        double mobility = board.possiblesMoves(me).length
+                        - board.possiblesMoves(opp).length;
         int myCount = 0, oppCount = 0;
         for (Piece[] row : board.getBoard()) {
             for (Piece p : row) {
                 if (p != null) {
-                    if (p.color.equals(me))    myCount++;
-                    else                        oppCount++;
+                    if (p.color.equals(me)) myCount++;
+                    else                      oppCount++;
                 }
             }
         }
-        double materialScore = 0.1 * (myCount - oppCount);
-        return mobilityScore + materialScore;
+        double material = 0.1 * (myCount - oppCount);
+        return mobility + material;
     }
 
     @Override
     public void mouvementEnnemi(String coup) {
         String adv = (myColour == IJoueur.NOIR) ? "blanc" : "noir";
-        if ("E".equals(coup) || "PASSE".equals(coup)) {
-            board.play("E", adv);
-        } else {
-            board.play(coup, adv);
-        }
+        board.play("E".equals(coup) || "PASSE".equals(coup) ? "E" : coup, adv);
     }
 
     @Override
     public void declareLeVainqueur(int winner) {
-        System.out.println("=== Vainqueur : " +
-            (winner == IJoueur.NOIR ? "NOIR" : "BLANC") + " ===");
+        // Optional: log the winner
     }
 
     @Override
     public String binoName() {
-        return "IA-Escampe-MinMax";
+        return "IA-Escampe-Minimax-AB";
     }
 }
